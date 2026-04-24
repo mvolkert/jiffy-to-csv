@@ -2,3 +2,4 @@
 *.json
 *.log
 output-test/
+__pycache__/

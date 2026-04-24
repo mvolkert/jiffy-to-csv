@@ -11,6 +11,35 @@
         "/^python jiffy_to_csv\\.py --month 2024-03 --output-dir output_test 2>&1$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^python jiffy_to_csv\\.py --month 2024-03$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python -m pytest test_jiffy_to_csv\\.py -v$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "pip": true,
+        "/^python jiffy_to_csv\\.py --month 2024-03 --primary-project ADEBAR$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python jiffy_to_csv\\.py --help$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python jiffy_to_csv\\.py --month 2026-04 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python jiffy_to_csv\\.py --month 2026-04 2>&1 \\| Select-String \"WARNING\\|INFO\" \\| Select-Object -First 20$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python jiffy_to_csv\\.py --month 2026-04 2>&1 \\| tail -10$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

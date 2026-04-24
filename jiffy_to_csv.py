@@ -5,25 +5,28 @@ Exports a single month from a Jiffy time-tracking JSON backup into two CSV files
 
 Usage
 -----
-    python jiffy_to_csv.py --month YYYY-MM [--input FILE] [--output-dir DIR]
+    python jiffy_to_csv.py --month YYYY-MM [--input FILE] [--output-dir DIR] [--primary-project NAME]
 
 Arguments
 ---------
---month      Required. Target month in YYYY-MM format.
---input      Optional. Path to the Jiffy JSON file.
-             Defaults to the first *.json file found in the current directory.
---output-dir Optional. Directory where the CSVs are written.
-             Defaults to the current directory.
+--month            Required. Target month in YYYY-MM format.
+--input            Optional. Path to the Jiffy JSON file.
+                   Defaults to the first *.json file found in the current directory.
+--output-dir       Optional. Directory where the CSVs are written.
+                   Defaults to the current directory.
+--primary-project  Optional. Name of the primary project (default: ADEBAR).
+                   CSV 1 uses this project tree. CSV 2 shows only its top-level sub-projects.
 
 Output
 ------
-CSV 1  <month>_adebar_detail.csv
-    One row per time entry belonging to the ADEBAR project tree.
+CSV 1  <month>_<primary>_detail.csv
+    One row per time entry belonging to the primary project tree.
     Columns: Datum; Uhrzeit von; Uhrzeit bis; Pause; Dauer; Beschreibung
+    If description is empty, the primary project name is used instead.
 
 CSV 2  <month>_daily_summary.csv
     One row per calendar day that has tracked entries (all projects).
-    Columns: Datum; Anfang; Ende; <ProjectName> ... (one column per sub-project)
+    Columns: Datum; Anfang; Ende; <ProjectName> ... (one column per top-level sub-project only)
 
 Rules applied
 -------------
@@ -292,9 +295,55 @@ def filter_and_round(
             is_pause=(e.owner_id in pause_owner_ids),
         ))
 
-    # Sort chronologically
-    result.sort(key=lambda e: (e.date_iso, e.start_dt))
-    return result
+    # Sort chronologically, then enforce non-overlapping ranges per day.
+    result.sort(key=lambda e: (e.date_iso, e.start_dt, e.stop_dt))
+
+    normalized: list[ProcessedEntry] = []
+    by_day = group_by_day(result)
+    for date_iso in sorted(by_day):
+        prev_stop: datetime | None = None
+        for entry in by_day[date_iso]:
+            start_n = entry.start_dt
+            stop_n = entry.stop_dt
+
+            if prev_stop is not None and start_n < prev_stop:
+                log.error(
+                    "Overlap after rounding on %s: %s-%s overlaps previous entry ending at %s. "
+                    "Adjusting start to %s.",
+                    date_iso,
+                    format_time(start_n),
+                    format_time(stop_n),
+                    format_time(prev_stop),
+                    format_time(prev_stop),
+                )
+                start_n = prev_stop
+
+            if stop_n <= start_n:
+                log.error(
+                    "Entry collapsed after overlap fix on %s: start=%s stop=%s. Skipping entry.",
+                    date_iso,
+                    format_time(start_n),
+                    format_time(stop_n),
+                )
+                continue
+
+            if start_n != entry.start_dt:
+                entry = ProcessedEntry(
+                    date=format_date(start_n),
+                    date_iso=start_n.strftime("%Y-%m-%d"),
+                    owner_id=entry.owner_id,
+                    owner_name=entry.owner_name,
+                    start_dt=start_n,
+                    stop_dt=stop_n,
+                    duration_h=duration_hours(start_n, stop_n),
+                    note=entry.note,
+                    is_pause=entry.is_pause,
+                )
+
+            normalized.append(entry)
+            prev_stop = entry.stop_dt
+
+    return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -313,12 +362,12 @@ def required_break(net_hours: float) -> float:
 def compute_day_breaks(
     day_entries: list[ProcessedEntry],
     date_iso: str,
-) -> tuple[float, list[ProcessedEntry]]:
+) -> tuple[float, float]:
     """
     Given all entries for one day (sorted by start time), compute and enforce breaks.
 
     Returns:
-        (total_break_hours, entries_possibly_extended_with_synthetic_pause)
+        (total_break_hours_including_synthetic, synthetic_break_hours)
 
     Logic:
       1. Sum explicit pause-owner entries.
@@ -328,7 +377,7 @@ def compute_day_breaks(
       5. If net > 10 h → add extra synthetic break and log it.
     """
     if not day_entries:
-        return 0.0, day_entries
+        return 0.0, 0.0
 
     # Separate pause entries from work entries
     work_entries = [e for e in day_entries if not e.is_pause]
@@ -369,14 +418,17 @@ def compute_day_breaks(
             date_iso, missing_break_h,
         )
 
-    return total_break_h + missing_break_h, day_entries
+    return total_break_h + missing_break_h, missing_break_h
 
 
 def group_by_day(entries: list[ProcessedEntry]) -> dict[str, list[ProcessedEntry]]:
-    """Return {date_iso: [entries]} preserving chronological order."""
+    """Return {date_iso: [entries]} sorted chronologically within each day."""
     groups: dict[str, list[ProcessedEntry]] = defaultdict(list)
     for e in entries:
         groups[e.date_iso].append(e)
+    # Sort entries within each day by start time
+    for date_iso in groups:
+        groups[date_iso].sort(key=lambda e: e.start_dt)
     return dict(sorted(groups.items()))
 
 
@@ -384,18 +436,24 @@ def group_by_day(entries: list[ProcessedEntry]) -> dict[str, list[ProcessedEntry
 # Step 6 – Description builder
 # ---------------------------------------------------------------------------
 
-def build_description(entry: ProcessedEntry, owner: Owner | None, adebar_id: str, owners: dict[str, Owner]) -> str:
+def build_description(
+    entry: ProcessedEntry,
+    owner: Owner | None,
+    primary_id: str,
+    primary_name: str,
+    owners: dict[str, Owner],
+) -> str:
     """
     Build the description string for CSV 1.
 
-    If the owner IS the ADEBAR root, return the note (or empty string).
+    If the owner IS the primary project root, use note; if note is empty, use primary project name.
     If the owner is a sub-project, return sub-project name + optional note.
     """
     if owner is None:
-        return entry.note
+        return entry.note or primary_name
 
-    if owner.id == adebar_id:
-        return entry.note
+    if owner.id == primary_id:
+        return entry.note or primary_name
 
     parts = [owner.name]
     if entry.note:
@@ -404,57 +462,93 @@ def build_description(entry: ProcessedEntry, owner: Owner | None, adebar_id: str
 
 
 # ---------------------------------------------------------------------------
-# Step 7 – CSV 1: ADEBAR detail
+# Step 7 – CSV 1: Primary project detail
 # ---------------------------------------------------------------------------
 
-def write_adebar_csv(
+def write_primary_csv(
     all_entries: list[ProcessedEntry],
     owners: dict[str, Owner],
-    adebar_ids: set[str],
-    adebar_root_id: str,
+    primary_ids: set[str],
+    primary_root_id: str,
+    primary_name: str,
     out_path: Path,
 ) -> None:
     """
-    Write the ADEBAR detail CSV.
+    Write the primary project detail CSV.
 
-    Columns: Datum; Uhrzeit von; Uhrzeit bis; Pause; Dauer; Beschreibung
-    - One row per time entry that belongs to the ADEBAR project tree.
-    - The Pause column shows the break (in HH:MM) *before* this entry on the same day.
-      For the first entry of the day it is the total day-break as computed by
-      compute_day_breaks(); for subsequent entries it shows the gap to the prior entry.
+        Columns: Datum; Uhrzeit von; Uhrzeit bis; Pause; Dauer; Beschreibung
+        - One row per time entry that belongs to the primary project tree.
+        - Gaps between entries are considered for day-break rules, but are NOT written
+            to the CSV pause column.
+        - The Pause column contains only synthetic pause that had to be added because
+            mandatory pause requirements were not fully covered by real gaps/pause entries.
     """
-    # Filter to ADEBAR scope
-    adebar_entries = [e for e in all_entries if e.owner_id in adebar_ids]
+    # Filter to primary project scope
+    primary_entries = [e for e in all_entries if e.owner_id in primary_ids]
 
-    day_groups = group_by_day(all_entries)  # for break computation (all projects)
-
-    # Pre-compute per-day break totals and whether a synthetic break was added
-    day_break_total: dict[str, float] = {}
-    for date_iso, day_list in day_groups.items():
-        total_break, _ = compute_day_breaks(day_list, date_iso)
-        day_break_total[date_iso] = total_break
+    # Group ALL entries by day for day-break computation (across all projects)
+    all_by_day = group_by_day(all_entries)
 
     with out_path.open("w", newline="", encoding="utf-8-sig") as fh:
         writer = csv.writer(fh, delimiter=";")
         writer.writerow(["Datum", "Uhrzeit von", "Uhrzeit bis", "Pause", "Dauer", "Beschreibung"])
 
-        adebar_by_day = group_by_day(adebar_entries)
-        for date_iso in sorted(adebar_by_day):
-            day_adebar = adebar_by_day[date_iso]
-            total_break_h = day_break_total.get(date_iso, 0.0)
+        primary_by_day = group_by_day(primary_entries)
+        for date_iso in sorted(primary_by_day):
+            day_primary = primary_by_day[date_iso]
+            all_day_entries = all_by_day.get(date_iso, [])
+            _, synthetic_break_h = compute_day_breaks(all_day_entries, date_iso)
 
-            for idx, entry in enumerate(day_adebar):
-                if idx == 0:
-                    # First entry of the day gets the total day break
-                    pause_str = hours_to_hhmm(total_break_h)
+            # Default: no pause shown in CSV rows (gaps are intentionally not listed).
+            pause_per_row_h = [0.0] * len(day_primary)
+
+            if synthetic_break_h > 0 and day_primary:
+                # Put synthetic pause near 12:00 on an entry that can absorb it.
+                noon = day_primary[0].start_dt.replace(hour=12, minute=0, second=0, microsecond=0)
+                fitting = [
+                    (i, e) for i, e in enumerate(day_primary)
+                    if e.duration_h >= synthetic_break_h
+                ]
+
+                if fitting:
+                    containing_noon = [
+                        (i, e) for i, e in fitting
+                        if e.start_dt <= noon <= e.stop_dt
+                    ]
+
+                    candidates = containing_noon if containing_noon else fitting
+
+                    target_idx, _ = min(
+                        candidates,
+                        key=lambda ie: abs(
+                            ((ie[1].start_dt + (ie[1].stop_dt - ie[1].start_dt) / 2) - noon).total_seconds()
+                        ),
+                    )
                 else:
-                    # Subsequent entries: gap to the previous ADEBAR entry
-                    prev = day_adebar[idx - 1]
-                    gap_h = max(0.0, duration_hours(prev.stop_dt, entry.start_dt))
-                    pause_str = hours_to_hhmm(gap_h)
+                    # Fallback: nearest entry to noon, even if too short.
+                    target_idx, _ = min(
+                        enumerate(day_primary),
+                        key=lambda ie: abs(
+                            ((ie[1].start_dt + (ie[1].stop_dt - ie[1].start_dt) / 2) - noon).total_seconds()
+                        ),
+                    )
+
+                pause_per_row_h[target_idx] = synthetic_break_h
+
+                if day_primary[target_idx].duration_h < synthetic_break_h:
+                    log.error(
+                        "Day %s: synthetic pause %.2f h exceeds target entry duration %.2f h.",
+                        date_iso,
+                        synthetic_break_h,
+                        day_primary[target_idx].duration_h,
+                    )
+
+            for idx, entry in enumerate(day_primary):
+                pause_h = pause_per_row_h[idx]
+                pause_str = hours_to_hhmm(pause_h)
 
                 owner = owners.get(entry.owner_id)
-                description = build_description(entry, owner, adebar_root_id, owners)
+                description = build_description(entry, owner, primary_root_id, primary_name, owners)
 
                 writer.writerow([
                     entry.date,
@@ -465,16 +559,17 @@ def write_adebar_csv(
                     description,
                 ])
 
-    log.info("CSV 1 written → %s  (%d rows)", out_path, len(adebar_entries))
+    log.info("CSV 1 written → %s  (%d rows)", out_path, len(primary_entries))
 
 
 # ---------------------------------------------------------------------------
-# Step 8 – CSV 2: Daily summary (all projects, pivot)
+# Step 8 – CSV 2: Daily summary (root-level projects only)
 # ---------------------------------------------------------------------------
 
 def write_daily_csv(
     all_entries: list[ProcessedEntry],
     owners: dict[str, Owner],
+    primary_root_id: str,
     out_path: Path,
 ) -> None:
     """
@@ -482,22 +577,51 @@ def write_daily_csv(
 
     Columns: Datum; Anfang; Ende; <project_name>...
     - One row per calendar day.
-    - Project columns contain the summed decimal hours (comma notation) for that
-      sub-project on that day.
+    - Project columns contain summed decimal hours (comma notation) for root-level
+      projects (owners with parent_id == None).
+    - Sub-projects are NOT shown as separate columns; their hours are rolled up
+      into their root project column.
     - Columns are sorted alphabetically by project name.
     - Day start = minimum rounded start time among all entries of the day.
     - Day end   = maximum rounded stop  time among all entries of the day.
     """
-    # Collect all project names that actually appear
-    project_names: set[str] = set()
-    day_groups = group_by_day(all_entries)
+    # Keep signature backward-compatible; CSV 2 now aggregates by root owners globally.
+    _ = primary_root_id
 
-    for day_entries in day_groups.values():
-        for e in day_entries:
-            if not e.is_pause:
-                project_names.add(e.owner_name)
+    def top_level_owner(owner_id: str) -> Owner | None:
+        """Return the owner that sits directly under the global root.
+
+        Example: root=Astrum IT, child=ADEBAR, subchild=Meeting -> returns ADEBAR.
+        """
+        current_id = owner_id
+        prev_id: str | None = None
+        seen: set[str] = set()
+
+        while current_id and current_id not in seen and current_id in owners:
+            seen.add(current_id)
+            current = owners[current_id]
+            if current.parent_id is None:
+                # current is global root; return previous node below root if present.
+                return owners[prev_id] if prev_id and prev_id in owners else current
+            prev_id = current_id
+            current_id = current.parent_id
+
+        return None
+
+    work_entries_all = [e for e in all_entries if not e.is_pause]
+    if not work_entries_all:
+        log.info("No work entries found. No CSV 2 written.")
+        return
+
+    # Collect root project names that actually appear in this export month.
+    project_names: set[str] = set()
+    for e in work_entries_all:
+        top = top_level_owner(e.owner_id)
+        project_names.add(top.name if top else e.owner_name)
 
     sorted_projects = sorted(project_names)
+
+    day_groups = group_by_day(all_entries)  # use ALL entries for grouping
 
     with out_path.open("w", newline="", encoding="utf-8-sig") as fh:
         writer = csv.writer(fh, delimiter=";")
@@ -516,7 +640,9 @@ def write_daily_csv(
             # Sum hours per project
             project_hours: dict[str, float] = defaultdict(float)
             for e in work_entries:
-                project_hours[e.owner_name] += e.duration_h
+                top = top_level_owner(e.owner_id)
+                top_name = top.name if top else e.owner_name
+                project_hours[top_name] += e.duration_h
 
             row = [
                 day_entries[0].date,
@@ -529,7 +655,11 @@ def write_daily_csv(
 
             writer.writerow(row)
 
-    log.info("CSV 2 written → %s  (%d days)", out_path, len(day_groups))
+    log.info(
+        "CSV 2 written → %s  (%d days)",
+        out_path,
+        len([d for d in day_groups if any(e for e in day_groups[d] if not e.is_pause)]),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -562,6 +692,12 @@ def parse_args() -> argparse.Namespace:
         metavar="DIR",
         default=".",
         help="Directory for the output CSV files. Defaults to current directory.",
+    )
+    parser.add_argument(
+        "--primary-project",
+        metavar="NAME",
+        default="ADEBAR",
+        help="Name of the primary project (default: ADEBAR). CSV 1 uses this project tree.",
     )
     return parser.parse_args()
 
@@ -602,20 +738,21 @@ def main() -> None:
     log.info("Loaded %d owners, %d entries.", len(owners), len(entries))
 
     # --- Locate special owners ---
-    adebar_owner = find_owner_by_name("ADEBAR", owners)
-    if adebar_owner is None:
-        log.error("Could not find an owner named 'ADEBAR' in the JSON.")
+    primary_owner = find_owner_by_name(args.primary_project, owners)
+    if primary_owner is None:
+        log.error("Could not find an owner named '%s' in the JSON.", args.primary_project)
         sys.exit(1)
 
     pause_owner = find_owner_by_name("Pause", owners)
     pause_owner_ids: set[str] = (
         descendants(pause_owner.id, owners) if pause_owner else set()
     )
-    adebar_ids: set[str] = descendants(adebar_owner.id, owners)
+    primary_ids: set[str] = descendants(primary_owner.id, owners)
 
     log.info(
-        "ADEBAR tree: %d owners.  Pause owner(s): %d.",
-        len(adebar_ids),
+        "%s tree: %d owners.  Pause owner(s): %d.",
+        args.primary_project,
+        len(primary_ids),
         len(pause_owner_ids),
     )
 
@@ -630,14 +767,16 @@ def main() -> None:
         sys.exit(0)
 
     # --- Output paths ---
-    csv1_path = out_dir / f"{args.month}_adebar_detail.csv"
+    csv1_path = out_dir / f"{args.month}_{args.primary_project.lower()}_detail.csv"
     csv2_path = out_dir / f"{args.month}_daily_summary.csv"
 
     # --- Write CSV 1 ---
-    write_adebar_csv(processed, owners, adebar_ids, adebar_owner.id, csv1_path)
+    write_primary_csv(
+        processed, owners, primary_ids, primary_owner.id, args.primary_project, csv1_path
+    )
 
     # --- Write CSV 2 ---
-    write_daily_csv(processed, owners, csv2_path)
+    write_daily_csv(processed, owners, primary_owner.id, csv2_path)
 
     log.info("Done.")
 
