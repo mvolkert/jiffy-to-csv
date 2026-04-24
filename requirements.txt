@@ -1,0 +1,2 @@
+# Standard library only - no third-party packages required.
+# Python >= 3.9 is required for zoneinfo support.

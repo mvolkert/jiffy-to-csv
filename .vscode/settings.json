@@ -1,0 +1,16 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^python jiffy_to_csv\\.py --month 2024-03 2>&1 \\| head -30$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python jiffy_to_csv\\.py --month 2024-03 2>&1 \\| Select-Object -First 30$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python jiffy_to_csv\\.py --month 2024-03 --output-dir output_test 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
