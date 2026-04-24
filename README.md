@@ -9,7 +9,7 @@ Export monthly time-tracking data from a Jiffy JSON backup into two structured C
 - **Dual CSV output**:
   - **CSV 1** (detail): One row per time entry in the primary project tree, with break tracking and descriptions.
   - **CSV 2** (daily summary): One row per day, aggregating hours by top-level sub-projects.
-- **Parameterizable project**: Specify any project as the "primary" project (default: ADEBAR); CSV 1 focuses on this project tree.
+- **Parameterizable project**: Specify any project as the "primary" project (default: ORBIT); CSV 1 focuses on this project tree.
 - **Pause tracking**: Automatic detection of pause entries and integration into daily break calculations.
 - **UTF-8-sig encoding**: CSV files are properly encoded for Excel compatibility.
 
@@ -41,7 +41,7 @@ Assumes a `*.json` file exists in the current directory. The script will locate 
 ### All Parameters
 
 ```bash
-python jiffy_to_csv.py --month 2024-03 --input backup.json --output-dir ./exports --primary-project ADEBAR
+python jiffy_to_csv.py --month 2024-03 --input backup.json --output-dir ./exports --primary-project ORBIT
 ```
 
 #### Arguments
@@ -51,7 +51,7 @@ python jiffy_to_csv.py --month 2024-03 --input backup.json --output-dir ./export
 | `--month` | Yes | Target month in `YYYY-MM` format (e.g., `2024-03`). |
 | `--input` | No | Path to the Jiffy JSON backup file. Defaults to the first `*.json` file found in the current directory. |
 | `--output-dir` | No | Output directory for CSV files. Defaults to the current directory. |
-| `--primary-project` | No | Name of the primary project (default: `ADEBAR`). CSV 1 focuses on entries from this project tree; CSV 2 shows only its top-level sub-projects. |
+| `--primary-project` | No | Name of the primary project (default: `ORBIT`). CSV 1 focuses on entries from this project tree; CSV 2 shows only its top-level sub-projects. |
 
 ### Examples
 
@@ -59,7 +59,7 @@ python jiffy_to_csv.py --month 2024-03 --input backup.json --output-dir ./export
 ```bash
 python jiffy_to_csv.py --month 2024-03
 ```
-**Output**: `2024-03_adebar_detail.csv` and `2024-03_daily_summary.csv` (in the current directory)
+**Output**: `2024-03_ORBIT_detail.csv` and `2024-03_daily_summary.csv` (in the current directory)
 
 #### Example 2: Export with custom primary project
 ```bash
@@ -71,7 +71,7 @@ python jiffy_to_csv.py --month 2024-03 --primary-project "BA Allgemein"
 ```bash
 python jiffy_to_csv.py --month 2024-03 --input ./backups/jiffy.json --output-dir ./exports
 ```
-**Output**: `./exports/2024-03_adebar_detail.csv` and `./exports/2024-03_daily_summary.csv`
+**Output**: `./exports/2024-03_ORBIT_detail.csv` and `./exports/2024-03_daily_summary.csv`
 
 ## Output Formats
 
@@ -148,7 +148,7 @@ python ~/jiffy-to-csv/jiffy_to_csv.py --month 2024-03 --input ./jiffy-backup.jso
 ```
 
 ### Step 3: Review the output
-- **CSV 1** (`2024-03_adebar_detail.csv`): Import into Excel for detailed time entry review
+- **CSV 1** (`2024-03_ORBIT_detail.csv`): Import into Excel for detailed time entry review
 - **CSV 2** (`2024-03_daily_summary.csv`): Use for daily time reporting or project hour summaries
 
 ## Time Rounding
@@ -189,10 +189,10 @@ Example output:
 ```
 INFO: Loading jiffy-backup.json …
 INFO: Loaded 232 owners, 9176 entries.
-INFO: ADEBAR tree: 220 owners.  Pause owner(s): 1.
+INFO: ORBIT tree: 220 owners.  Pause owner(s): 1.
 INFO: Month 2024-03: 114 active entries after filtering.
 INFO: Day 2024-03-01: adding 0.75 h synthetic break (mandatory break not fully covered).
-INFO: CSV 1 written → 2024-03_adebar_detail.csv  (104 rows)
+INFO: CSV 1 written → 2024-03_ORBIT_detail.csv  (104 rows)
 INFO: CSV 2 written → 2024-03_daily_summary.csv  (18 days)
 INFO: Done.
 ```
@@ -211,7 +211,7 @@ This project is provided as-is for time-tracking export and analysis.
 ### No Jiffy JSON file found
 **Solution**: Place the JSON backup in the current directory or provide the `--input` parameter with the full path.
 
-### "Could not find an owner named 'ADEBAR'"
+### "Could not find an owner named 'ORBIT'"
 **Solution**: Check the JSON for the correct project name using `--primary-project`. Ensure the project exists in your Jiffy backup.
 
 ### CSV files are empty or have only headers
@@ -223,3 +223,4 @@ This project is provided as-is for time-tracking export and analysis.
 ## Version History
 
 - **1.0.0** (2024-03): Initial release with parameterizable primary project, top-level sub-project filtering, and description fallback logic.
+

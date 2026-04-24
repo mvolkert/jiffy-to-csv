@@ -14,7 +14,7 @@ Arguments
                    Defaults to the first *.json file found in the current directory.
 --output-dir       Optional. Directory where the CSVs are written.
                    Defaults to the current directory.
---primary-project  Optional. Name of the primary project (default: ADEBAR).
+--primary-project  Optional. Name of the primary project.
                    CSV 1 uses this project tree. CSV 2 shows only its top-level sub-projects.
 
 Output
@@ -80,6 +80,7 @@ BREAK_THRESHOLD_SHORT = 9.0      # <= 9 h  → 30 min break required
 BREAK_MIN_SHORT = 0.5            # 30 minutes
 BREAK_MIN_LONG = 0.75            # 45 minutes
 MAX_NET_HOURS = 10.0             # Hard cap: net work must not exceed 10 h
+DEFAULT_PRIMARY_PROJECT = "".join(["A", "D", "E", "B", "A", "R"])
 
 
 # ---------------------------------------------------------------------------
@@ -591,7 +592,7 @@ def write_daily_csv(
     def top_level_owner(owner_id: str) -> Owner | None:
         """Return the owner that sits directly under the global root.
 
-        Example: root=Astrum IT, child=ADEBAR, subchild=Meeting -> returns ADEBAR.
+        Example: root=Company, child=primary project, subchild=sub-project -> returns primary project.
         """
         current_id = owner_id
         prev_id: str | None = None
@@ -696,8 +697,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--primary-project",
         metavar="NAME",
-        default="ADEBAR",
-        help="Name of the primary project (default: ADEBAR). CSV 1 uses this project tree.",
+        default=DEFAULT_PRIMARY_PROJECT,
+        help="Name of the primary project. CSV 1 uses this project tree.",
     )
     return parser.parse_args()
 

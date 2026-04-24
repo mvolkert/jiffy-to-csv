@@ -23,21 +23,21 @@ def sample_json_data():
     return {
         "time_owners": [
             {
-                "id": "owner-adebar",
-                "name": "ADEBAR",
+                "id": "owner-ORBIT",
+                "name": "ORBIT",
                 "parent_id": None,
                 "status": "ACTIVE",
             },
             {
-                "id": "owner-adebar-5001",
-                "name": "ADEBAR-5001",
-                "parent_id": "owner-adebar",
+                "id": "owner-ORBIT-5001",
+                "name": "ORBIT-5001",
+                "parent_id": "owner-ORBIT",
                 "status": "ACTIVE",
             },
             {
                 "id": "owner-meeting",
                 "name": "Meeting",
-                "parent_id": "owner-adebar",
+                "parent_id": "owner-ORBIT",
                 "status": "ACTIVE",
             },
             {
@@ -48,19 +48,19 @@ def sample_json_data():
             },
         ],
         "time_entries": [
-            # 2024-03-01: ADEBAR entry without note (should use fallback to "ADEBAR")
+            # 2024-03-01: ORBIT entry without note (should use fallback to "ORBIT")
             {
                 "id": "entry-1",
-                "owner_id": "owner-adebar",
+                "owner_id": "owner-ORBIT",
                 "start_time": 1709279400000,  # 2024-03-01 08:30 Berlin time
                 "stop_time": 1709283000000,   # 2024-03-01 09:30 Berlin time (30 min)
                 "note": "",
                 "status": "ACTIVE",
             },
-            # 2024-03-01: ADEBAR-5001 entry with note
+            # 2024-03-01: ORBIT-5001 entry with note
             {
                 "id": "entry-2",
-                "owner_id": "owner-adebar-5001",
+                "owner_id": "owner-ORBIT-5001",
                 "start_time": 1709283600000,  # 2024-03-01 09:45 Berlin time
                 "stop_time": 1709287200000,   # 2024-03-01 10:45 Berlin time (1 hour)
                 "note": "Task 001",
@@ -78,7 +78,7 @@ def sample_json_data():
             # 2024-03-04: Multiple entries
             {
                 "id": "entry-4",
-                "owner_id": "owner-adebar",
+                "owner_id": "owner-ORBIT",
                 "start_time": 1709544600000,  # 2024-03-04 09:00 Berlin time
                 "stop_time": 1709548200000,   # 2024-03-04 10:00 Berlin time (1 hour)
                 "note": "",
@@ -104,7 +104,7 @@ def sample_json_data():
             # Deleted entry (should be skipped)
             {
                 "id": "entry-deleted",
-                "owner_id": "owner-adebar",
+                "owner_id": "owner-ORBIT",
                 "start_time": 1709560000000,
                 "stop_time": 1709563600000,
                 "note": "Deleted entry",
@@ -135,9 +135,9 @@ class TestJSONLoading:
         """Test owner map building."""
         owners = app.build_owner_map(sample_json_data)
         assert len(owners) == 4
-        assert owners["owner-adebar"].name == "ADEBAR"
-        assert owners["owner-adebar"].parent_id is None
-        assert owners["owner-adebar-5001"].parent_id == "owner-adebar"
+        assert owners["owner-ORBIT"].name == "ORBIT"
+        assert owners["owner-ORBIT"].parent_id is None
+        assert owners["owner-ORBIT-5001"].parent_id == "owner-ORBIT"
 
     def test_build_entries(self, sample_json_data):
         """Test entry list building."""
@@ -173,17 +173,17 @@ class TestDescriptionBuilding:
         entry = app.ProcessedEntry(
             date="01.03.2024",
             date_iso="2024-03-01",
-            owner_id="owner-adebar",
-            owner_name="ADEBAR",
+            owner_id="owner-ORBIT",
+            owner_name="ORBIT",
             start_dt=datetime(2024, 3, 1, 8, 30, tzinfo=BERLIN),
             stop_dt=datetime(2024, 3, 1, 9, 0, tzinfo=BERLIN),
             duration_h=0.5,
             note="My task",
             is_pause=False,
         )
-        owner = owners["owner-adebar"]
+        owner = owners["owner-ORBIT"]
         desc = app.build_description(
-            entry, owner, "owner-adebar", "ADEBAR", owners
+            entry, owner, "owner-ORBIT", "ORBIT", owners
         )
         assert desc == "My task"
 
@@ -193,19 +193,19 @@ class TestDescriptionBuilding:
         entry = app.ProcessedEntry(
             date="01.03.2024",
             date_iso="2024-03-01",
-            owner_id="owner-adebar",
-            owner_name="ADEBAR",
+            owner_id="owner-ORBIT",
+            owner_name="ORBIT",
             start_dt=datetime(2024, 3, 1, 8, 30, tzinfo=BERLIN),
             stop_dt=datetime(2024, 3, 1, 9, 0, tzinfo=BERLIN),
             duration_h=0.5,
             note="",
             is_pause=False,
         )
-        owner = owners["owner-adebar"]
+        owner = owners["owner-ORBIT"]
         desc = app.build_description(
-            entry, owner, "owner-adebar", "ADEBAR", owners
+            entry, owner, "owner-ORBIT", "ORBIT", owners
         )
-        assert desc == "ADEBAR"
+        assert desc == "ORBIT"
 
     def test_description_subproject_with_note(self, sample_json_data):
         """Description with note on sub-project should return project name – note."""
@@ -213,19 +213,19 @@ class TestDescriptionBuilding:
         entry = app.ProcessedEntry(
             date="01.03.2024",
             date_iso="2024-03-01",
-            owner_id="owner-adebar-5001",
-            owner_name="ADEBAR-5001",
+            owner_id="owner-ORBIT-5001",
+            owner_name="ORBIT-5001",
             start_dt=datetime(2024, 3, 1, 9, 45, tzinfo=BERLIN),
             stop_dt=datetime(2024, 3, 1, 10, 45, tzinfo=BERLIN),
             duration_h=1.0,
             note="Task 001",
             is_pause=False,
         )
-        owner = owners["owner-adebar-5001"]
+        owner = owners["owner-ORBIT-5001"]
         desc = app.build_description(
-            entry, owner, "owner-adebar", "ADEBAR", owners
+            entry, owner, "owner-ORBIT", "ORBIT", owners
         )
-        assert desc == "ADEBAR-5001 – Task 001"
+        assert desc == "ORBIT-5001 – Task 001"
 
     def test_description_subproject_empty(self, sample_json_data):
         """Description with empty note on sub-project should still show project name."""
@@ -243,7 +243,7 @@ class TestDescriptionBuilding:
         )
         owner = owners["owner-meeting"]
         desc = app.build_description(
-            entry, owner, "owner-adebar", "ADEBAR", owners
+            entry, owner, "owner-ORBIT", "ORBIT", owners
         )
         assert desc == "Meeting"
 
@@ -252,19 +252,19 @@ class TestOwnerHierarchy:
     def test_descendants(self, sample_json_data):
         """Test descendants function."""
         owners = app.build_owner_map(sample_json_data)
-        desc = app.descendants("owner-adebar", owners)
-        # Should include ADEBAR and its sub-projects
-        assert "owner-adebar" in desc
-        assert "owner-adebar-5001" in desc
+        desc = app.descendants("owner-ORBIT", owners)
+        # Should include ORBIT and its sub-projects
+        assert "owner-ORBIT" in desc
+        assert "owner-ORBIT-5001" in desc
         assert "owner-meeting" in desc
         assert "owner-pause" not in desc
 
     def test_ancestors(self, sample_json_data):
         """Test ancestors function."""
         owners = app.build_owner_map(sample_json_data)
-        anc = app.ancestors("owner-adebar-5001", owners)
-        assert "owner-adebar-5001" in anc
-        assert "owner-adebar" in anc
+        anc = app.ancestors("owner-ORBIT-5001", owners)
+        assert "owner-ORBIT-5001" in anc
+        assert "owner-ORBIT" in anc
         assert "owner-pause" not in anc
 
 
@@ -298,15 +298,15 @@ class TestEndToEnd:
         processed = app.filter_and_round(entries, owners, 2024, 3, pause_owner_ids)
 
         # Write CSV 1
-        primary_ids = app.descendants("owner-adebar", owners)
+        primary_ids = app.descendants("owner-ORBIT", owners)
         csv1_path = temp_output_dir / "test_detail.csv"
         app.write_primary_csv(
-            processed, owners, primary_ids, "owner-adebar", "ADEBAR", csv1_path
+            processed, owners, primary_ids, "owner-ORBIT", "ORBIT", csv1_path
         )
 
         # Write CSV 2
         csv2_path = temp_output_dir / "test_summary.csv"
-        app.write_daily_csv(processed, owners, "owner-adebar", csv2_path)
+        app.write_daily_csv(processed, owners, "owner-ORBIT", csv2_path)
 
         # Verify files exist and have content
         assert csv1_path.exists()
@@ -325,3 +325,4 @@ class TestEndToEnd:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
